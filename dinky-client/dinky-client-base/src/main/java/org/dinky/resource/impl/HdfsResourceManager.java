@@ -19,6 +19,7 @@
 
 package org.dinky.resource.impl;
 
+import org.apache.hadoop.security.UserGroupInformation;
 import org.dinky.data.exception.BusException;
 import org.dinky.data.model.ResourcesVO;
 import org.dinky.resource.BaseResourceManager;
@@ -36,7 +37,10 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IoUtil;
 
 public class HdfsResourceManager implements BaseResourceManager {
-    FileSystem hdfs;
+    FileSystem hdfs=null;
+    String hdfsSecuriyType=null;
+    UserGroupInformation ugi = null;
+
 
     @Override
     public void remove(String path) {
@@ -108,5 +112,24 @@ public class HdfsResourceManager implements BaseResourceManager {
 
     public synchronized void setHdfs(FileSystem hdfs) {
         this.hdfs = hdfs;
+    }
+
+    public UserGroupInformation getUgi(){
+        if (ugi == null && instances.getResourcesEnable().getValue()) {
+            throw BusException.valueOf("Resource configuration error, uig is not enabled");
+        }
+        return ugi;
+    }
+
+    public synchronized void setUgi(UserGroupInformation ugi) {
+        this.ugi = ugi;
+    }
+
+    public String getHdfsSecuriyType(){
+        return hdfsSecuriyType;
+    }
+
+    public synchronized void setHdfsSecuriyType(String hdfsSecuriyType) {
+        this.hdfsSecuriyType = hdfsSecuriyType;
     }
 }
