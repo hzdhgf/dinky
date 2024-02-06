@@ -38,10 +38,12 @@
         <dependency>
             <groupId>org.dinky</groupId>
             <artifactId>dinky-app-base</artifactId>
+            <version>${revision}</version>
         </dependency>
         <dependency>
             <groupId>org.dinky</groupId>
             <artifactId>dinky-client-1.15</artifactId>
+            <version>${revision}</version>
         </dependency>
         <dependency>
             <groupId>org.dinky</groupId>
