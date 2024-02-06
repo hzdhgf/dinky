@@ -19,6 +19,7 @@
 
 package org.dinky.resource;
 
+import org.apache.hadoop.security.UserGroupInformation;
 import org.dinky.data.exception.DinkyException;
 import org.dinky.data.model.ResourcesVO;
 import org.dinky.data.model.SystemConfiguration;
@@ -33,6 +34,7 @@ import org.apache.hadoop.fs.FileSystem;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.security.PrivilegedExceptionAction;
 import java.util.List;
 
 import cn.hutool.core.io.FileUtil;
@@ -93,10 +95,13 @@ public interface BaseResourceManager {
                             instances.getResourcesHdfsDefaultFS().getValue());
                 }
                 try {
-                    FileSystem fileSystem = FileSystem.get(
-                            FileSystem.getDefaultUri(configuration),
-                            configuration,
-                            instances.getResourcesHdfsUser().getValue());
+                    UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
+                    FileSystem fileSystem = ugi.doAs(new PrivilegedExceptionAction<FileSystem>() {
+                        @Override
+                        public FileSystem run() throws Exception {
+                            return FileSystem.get(configuration);
+                        }
+                    });
                     Singleton.get(HdfsResourceManager.class).setHdfs(fileSystem);
                 } catch (Exception e) {
                     throw new DinkyException(e);
