@@ -19,12 +19,16 @@
 
 package org.dinky.init;
 
+import cn.hutool.core.lang.Singleton;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.dinky.assertion.Asserts;
 import org.dinky.context.TenantContextHolder;
 import org.dinky.daemon.pool.FlinkJobThreadPool;
 import org.dinky.daemon.pool.ScheduleThreadPool;
 import org.dinky.daemon.task.DaemonTask;
 import org.dinky.daemon.task.DaemonTaskConfig;
+import org.dinky.data.enums.HdfsSecurityType;
 import org.dinky.data.exception.DinkyException;
 import org.dinky.data.model.Configuration;
 import org.dinky.data.model.SystemConfiguration;
@@ -37,6 +41,7 @@ import org.dinky.job.ClearJobHistoryTask;
 import org.dinky.job.FlinkJobTask;
 import org.dinky.job.SystemMetricsTask;
 import org.dinky.resource.BaseResourceManager;
+import org.dinky.resource.impl.HdfsResourceManager;
 import org.dinky.scheduler.client.ProjectClient;
 import org.dinky.scheduler.exception.SchedulerException;
 import org.dinky.scheduler.model.Project;
@@ -51,11 +56,14 @@ import org.dinky.utils.UDFUtils;
 
 import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
 
+import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
@@ -96,8 +104,9 @@ public class SystemInit implements ApplicationRunner {
     private static Project project;
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void run(ApplicationArguments args) throws IOException {
         TenantContextHolder.ignoreTenant();
+        initHdfsWithKerberos();
         initResources();
         List<Tenant> tenants = tenantService.list();
         sysConfigService.initSysConfig();
@@ -237,6 +246,48 @@ public class SystemInit implements ApplicationRunner {
                     .peek(x -> x.setBuildState(2))
                     .forEach(Model::updateById);
             FileUtil.del(path);
+        }
+    }
+
+    @Value("${security.kerberos.login.keytab}")
+    private String keytabLocation;
+
+    @Value("${security.kerberos.login.principal}")
+    private String kerberosPrincipal;
+
+    @Value("${security.kerberos.krb5.conf.path}")
+    private String krb5Location;
+
+    @Value("${security.kerberos.enable}")
+    private boolean kerberosEnable;
+
+    @Value("${hdfs.fs.defaultFS}")
+    private String hdfsDefaultFS;
+    public void initHdfsWithKerberos() throws IOException {
+
+        final org.apache.hadoop.conf.Configuration configuration = new org.apache.hadoop.conf.Configuration();
+
+        if (kerberosEnable) {
+            System.setProperty("java.security.krb5.conf", krb5Location);
+            configuration.set("hadoop.security.authentication", "kerberos");
+            UserGroupInformation.setConfiguration(configuration);
+            UserGroupInformation.loginUserFromKeytab(kerberosPrincipal, keytabLocation);
+
+            try {
+                UserGroupInformation ugi = UserGroupInformation.getLoginUser();
+                FileSystem fileSystem = ugi.doAs(new PrivilegedExceptionAction<FileSystem>() {
+                    @Override
+                    public FileSystem run() throws Exception {
+                        return FileSystem.get(configuration);
+                    }
+                });
+                Singleton.get(HdfsResourceManager.class).setHdfsSecuriyType(String.valueOf(HdfsSecurityType.KERBEROS));
+                Singleton.get(HdfsResourceManager.class).setHdfs(fileSystem);
+                Singleton.get(HdfsResourceManager.class).setUgi(ugi);
+
+            } catch (Exception e) {
+                throw new DinkyException(e);
+            }
         }
     }
 }
